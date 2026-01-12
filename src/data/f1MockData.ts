@@ -1,31 +1,7 @@
 // Mock F1 data for demonstration
-export const years = [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
+export const years = [2024, 2023, 2022, 2021, 2020, 2019, 2018];
 
 export const circuits: Record<number, string[]> = {
-  2025: [
-    "Bahrain International Circuit",
-    "Jeddah Corniche Circuit",
-    "Albert Park Circuit",
-    "Suzuka Circuit",
-    "Shanghai International Circuit",
-    "Miami International Autodrome",
-    "Imola Circuit",
-    "Monaco Circuit",
-    "Circuit Gilles Villeneuve",
-    "Circuit de Barcelona-Catalunya",
-    "Red Bull Ring",
-    "Silverstone Circuit",
-    "Hungaroring",
-    "Spa-Francorchamps",
-    "Zandvoort Circuit",
-    "Monza Circuit",
-    "Marina Bay Street Circuit",
-    "Circuit of the Americas",
-    "Autodromo Hermanos Rodriguez",
-    "Interlagos Circuit",
-    "Las Vegas Strip Circuit",
-    "Yas Marina Circuit",
-  ],
   2024: [
     "Bahrain International Circuit",
     "Jeddah Corniche Circuit",
