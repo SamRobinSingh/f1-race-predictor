@@ -1,17 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, History, Layers, Info } from "lucide-react";
+import { Zap, History, Layers, Info, AlertTriangle, WifiOff } from "lucide-react";
 import RaceSelector from "@/components/RaceSelector";
 import WinnerCards from "@/components/WinnerCards";
 import PredictionTable from "@/components/PredictionTable";
-import {
-  years as allYears,
-  circuits as circuitData,
-  generatePredictions,
-  PredictionResult,
-} from "@/data/f1MockData";
-
-export type ModelType = "hybrid" | "telemetry" | "historical";
+import { ApiConnectionStatus } from "@/components/ApiConnectionStatus";
+import { PredictionResult } from "@/data/f1MockData";
+import { f1ApiService, ConnectionStatus, ModelType } from "@/services/f1ApiService";
 
 interface ModelConfig {
   type: ModelType;
@@ -83,43 +78,71 @@ export function PredictorPage({ modelType }: PredictorPageProps) {
   const config = modelConfigs[modelType];
   const Icon = config.icon;
 
-  // Filter years based on model's year range
-  const years = allYears.filter(
-    (y) => y >= config.yearRange[0] && y <= config.yearRange[1]
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+    f1ApiService.getConnectionStatus()
   );
-
+  const [years, setYears] = useState<number[]>([]);
+  const [circuits, setCircuits] = useState<string[]>([]);
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedCircuit, setSelectedCircuit] = useState<string | null>(null);
-  const [predictions, setPredictions] = useState<PredictionResult[] | null>(
-    null
-  );
+  const [predictions, setPredictions] = useState<PredictionResult[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const availableCircuits = selectedYear ? circuitData[selectedYear] || [] : [];
+  // Subscribe to connection status changes
+  useEffect(() => {
+    return f1ApiService.onStatusChange(setConnectionStatus);
+  }, []);
+
+  // Fetch years when connected
+  useEffect(() => {
+    if (connectionStatus.connected) {
+      f1ApiService
+        .getYears(modelType)
+        .then(setYears)
+        .catch((err) => setError(err.message));
+    }
+  }, [connectionStatus.connected, modelType]);
+
+  // Fetch circuits when year changes
+  useEffect(() => {
+    if (connectionStatus.connected && selectedYear) {
+      f1ApiService
+        .getCircuits(selectedYear)
+        .then(setCircuits)
+        .catch((err) => setError(err.message));
+    }
+  }, [connectionStatus.connected, selectedYear]);
 
   const handleYearChange = useCallback((year: number) => {
     setSelectedYear(year);
     setSelectedCircuit(null);
     setPredictions(null);
+    setError(null);
   }, []);
 
   const handleCircuitChange = useCallback((circuit: string) => {
     setSelectedCircuit(circuit);
     setPredictions(null);
+    setError(null);
   }, []);
 
-  const handlePredict = useCallback(() => {
+  const handlePredict = useCallback(async () => {
     if (!selectedYear || !selectedCircuit) return;
 
     setIsLoading(true);
+    setError(null);
 
-    // Simulate API call delay
-    setTimeout(() => {
-      const results = generatePredictions(selectedYear, selectedCircuit);
+    try {
+      const results = await f1ApiService.predict(modelType, selectedYear, selectedCircuit);
       setPredictions(results);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Prediction failed");
+      setPredictions(null);
+    } finally {
       setIsLoading(false);
-    }, 1500);
-  }, [selectedYear, selectedCircuit]);
+    }
+  }, [modelType, selectedYear, selectedCircuit]);
 
   const aiWinner = predictions?.[0];
   const actualWinner = predictions?.find((p) => p.actual === 1);
@@ -171,91 +194,147 @@ export function PredictorPage({ modelType }: PredictorPageProps) {
               </p>
             </div>
 
-            {/* Features */}
-            <div className="flex flex-wrap gap-2 md:max-w-xs">
-              {config.features.map((feature) => (
-                <span
-                  key={feature}
-                  className="text-xs px-2 py-1 rounded-md bg-secondary text-muted-foreground"
-                >
-                  {feature}
-                </span>
-              ))}
+            {/* API Status + Features */}
+            <div className="flex flex-col gap-3">
+              <ApiConnectionStatus />
+              <div className="flex flex-wrap gap-2 md:max-w-xs">
+                {config.features.map((feature) => (
+                  <span
+                    key={feature}
+                    className="text-xs px-2 py-1 rounded-md bg-secondary text-muted-foreground"
+                  >
+                    {feature}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </motion.div>
 
-      {/* Race Selector */}
-      <RaceSelector
-        years={years}
-        circuits={availableCircuits}
-        selectedYear={selectedYear}
-        selectedCircuit={selectedCircuit}
-        onYearChange={handleYearChange}
-        onCircuitChange={handleCircuitChange}
-        onPredict={handlePredict}
-        isLoading={isLoading}
-      />
+      {/* Not Connected State */}
+      {!connectionStatus.connected && !connectionStatus.checking && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-red-500/30 bg-red-500/5 p-8 text-center"
+        >
+          <WifiOff className="w-16 h-16 mx-auto mb-4 text-red-400/60" />
+          <h3 className="font-racing text-xl text-red-400 mb-2">
+            Python Backend Not Connected
+          </h3>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto mb-4">
+            Deploy your Python FastAPI backend and configure the connection using
+            the settings button above.
+          </p>
+          <div className="p-4 rounded-lg bg-background/50 border border-border/50 max-w-lg mx-auto text-left">
+            <h4 className="text-sm font-medium mb-2">Quick Start:</h4>
+            <pre className="text-xs text-muted-foreground overflow-x-auto">
+{`cd python-backend
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000`}
+            </pre>
+          </div>
+        </motion.div>
+      )}
 
-      {/* Results */}
-      <AnimatePresence mode="wait">
-        {predictions && aiWinner && actualWinner && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="space-y-6"
-          >
-            <WinnerCards
-              aiWinner={aiWinner.driver}
-              aiWinnerTeam={aiWinner.team}
-              actualWinner={actualWinner.driver}
-              actualWinnerTeam={actualWinner.team}
-            />
-
-            <PredictionTable
-              data={predictions}
-              year={selectedYear!}
-              circuit={selectedCircuit!}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Empty State */}
-      {!predictions && !isLoading && (
+      {/* Checking Connection */}
+      {connectionStatus.checking && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-center py-16"
+          className="rounded-2xl border border-border/50 bg-card/50 p-8 text-center"
         >
-          <div
-            className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
-            style={{ backgroundColor: `${config.color}15` }}
-          >
-            <Icon className="w-10 h-10" style={{ color: config.color }} />
-          </div>
-          <h3 className="font-racing text-xl text-muted-foreground mb-2">
-            Select Race Details
-          </h3>
-          <p className="text-sm text-muted-foreground/70 max-w-md mx-auto">
-            Choose a season year ({config.yearRange[0]}-{config.yearRange[1]}) and
-            circuit to generate predictions using the {config.title}.
-          </p>
-
-          {/* Model info hint */}
-          <div className="mt-8 inline-flex items-center gap-2 text-xs text-muted-foreground/60 bg-secondary/50 px-4 py-2 rounded-full">
-            <Info className="w-3 h-3" />
-            <span>
-              {modelType === "telemetry"
-                ? "Uses real-time car telemetry for win probability"
-                : modelType === "historical"
-                ? "Analyzes historical patterns & driver momentum"
-                : "Combines both models for best accuracy"}
-            </span>
-          </div>
+          <div className="w-16 h-16 mx-auto mb-4 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
+          <p className="text-muted-foreground">Connecting to Python backend...</p>
         </motion.div>
+      )}
+
+      {/* Connected - Show Race Selector */}
+      {connectionStatus.connected && (
+        <>
+          <RaceSelector
+            years={years}
+            circuits={circuits}
+            selectedYear={selectedYear}
+            selectedCircuit={selectedCircuit}
+            onYearChange={handleYearChange}
+            onCircuitChange={handleCircuitChange}
+            onPredict={handlePredict}
+            isLoading={isLoading}
+          />
+
+          {/* Error State */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4 flex items-center gap-3"
+            >
+              <AlertTriangle className="w-5 h-5 text-yellow-400" />
+              <p className="text-sm text-yellow-400">{error}</p>
+            </motion.div>
+          )}
+
+          {/* Results */}
+          <AnimatePresence mode="wait">
+            {predictions && aiWinner && actualWinner && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-6"
+              >
+                <WinnerCards
+                  aiWinner={aiWinner.driver}
+                  aiWinnerTeam={aiWinner.team}
+                  actualWinner={actualWinner.driver}
+                  actualWinnerTeam={actualWinner.team}
+                />
+
+                <PredictionTable
+                  data={predictions}
+                  year={selectedYear!}
+                  circuit={selectedCircuit!}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Empty State */}
+          {!predictions && !isLoading && !error && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="text-center py-16"
+            >
+              <div
+                className="w-20 h-20 mx-auto mb-6 rounded-2xl flex items-center justify-center"
+                style={{ backgroundColor: `${config.color}15` }}
+              >
+                <Icon className="w-10 h-10" style={{ color: config.color }} />
+              </div>
+              <h3 className="font-racing text-xl text-muted-foreground mb-2">
+                Select Race Details
+              </h3>
+              <p className="text-sm text-muted-foreground/70 max-w-md mx-auto">
+                Choose a season year ({config.yearRange[0]}-{config.yearRange[1]}) and
+                circuit to generate predictions using the {config.title}.
+              </p>
+
+              <div className="mt-8 inline-flex items-center gap-2 text-xs text-muted-foreground/60 bg-secondary/50 px-4 py-2 rounded-full">
+                <Info className="w-3 h-3" />
+                <span>
+                  {modelType === "telemetry"
+                    ? "Uses real-time car telemetry for win probability"
+                    : modelType === "historical"
+                    ? "Analyzes historical patterns & driver momentum"
+                    : "Combines both models for best accuracy"}
+                </span>
+              </div>
+            </motion.div>
+          )}
+        </>
       )}
     </div>
   );
