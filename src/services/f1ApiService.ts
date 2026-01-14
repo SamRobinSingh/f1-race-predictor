@@ -1,8 +1,8 @@
 /**
  * F1 API Service
  * 
- * This service connects to your Python FastAPI backend.
- * Update API_BASE_URL with your deployed backend URL.
+ * Connects to your Python FastAPI backend - NO mock data fallback.
+ * Deploy your Python backend and set VITE_F1_API_URL env variable.
  */
 
 import { PredictionResult, teamColors } from "@/data/f1MockData";
@@ -41,60 +41,118 @@ interface ApiCircuitsResponse {
   circuits: string[];
 }
 
+interface ApiHealthResponse {
+  status: string;
+  models: {
+    historical: boolean;
+    telemetry: boolean;
+    hybrid: boolean;
+  };
+}
+
+export interface ConnectionStatus {
+  connected: boolean;
+  checking: boolean;
+  error: string | null;
+  models: {
+    historical: boolean;
+    telemetry: boolean;
+    hybrid: boolean;
+  };
+}
+
 class F1ApiService {
   private baseUrl: string;
-  private useMockData: boolean = true; // Toggle this when backend is ready
+  private connectionStatus: ConnectionStatus = {
+    connected: false,
+    checking: true,
+    error: null,
+    models: { historical: false, telemetry: false, hybrid: false }
+  };
+  private statusListeners: ((status: ConnectionStatus) => void)[] = [];
 
   constructor() {
     this.baseUrl = API_BASE_URL;
-    // Check if API is available
-    this.checkApiAvailability();
+    this.checkConnection();
   }
 
-  private async checkApiAvailability(): Promise<void> {
+  onStatusChange(listener: (status: ConnectionStatus) => void): () => void {
+    this.statusListeners.push(listener);
+    listener(this.connectionStatus);
+    return () => {
+      this.statusListeners = this.statusListeners.filter(l => l !== listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    this.statusListeners.forEach(l => l(this.connectionStatus));
+  }
+
+  async checkConnection(): Promise<ConnectionStatus> {
+    this.connectionStatus = { ...this.connectionStatus, checking: true };
+    this.notifyListeners();
+
     try {
       const response = await fetch(`${this.baseUrl}/`, { 
         method: 'GET',
-        signal: AbortSignal.timeout(3000) 
+        signal: AbortSignal.timeout(5000) 
       });
+      
       if (response.ok) {
-        this.useMockData = false;
+        const data: ApiHealthResponse = await response.json();
+        this.connectionStatus = {
+          connected: true,
+          checking: false,
+          error: null,
+          models: data.models || { historical: false, telemetry: false, hybrid: false }
+        };
         console.log("✅ F1 API connected:", this.baseUrl);
+      } else {
+        throw new Error(`Server returned ${response.status}`);
       }
     } catch (error) {
-      console.log("⚠️ F1 API not available, using mock data");
-      this.useMockData = true;
+      const errorMsg = error instanceof Error ? error.message : "Connection failed";
+      this.connectionStatus = {
+        connected: false,
+        checking: false,
+        error: `Cannot connect to ${this.baseUrl}: ${errorMsg}`,
+        models: { historical: false, telemetry: false, hybrid: false }
+      };
+      console.error("❌ F1 API connection failed:", this.connectionStatus.error);
     }
+
+    this.notifyListeners();
+    return this.connectionStatus;
+  }
+
+  getConnectionStatus(): ConnectionStatus {
+    return this.connectionStatus;
   }
 
   async getYears(modelType: ModelType): Promise<number[]> {
-    if (this.useMockData) {
-      return this.getMockYears(modelType);
+    if (!this.connectionStatus.connected) {
+      throw new Error("API not connected");
     }
 
-    try {
-      const response = await fetch(`${this.baseUrl}/years/${modelType}`);
-      const data: ApiYearsResponse = await response.json();
-      return data.years;
-    } catch (error) {
-      console.error("API Error:", error);
-      return this.getMockYears(modelType);
+    const response = await fetch(`${this.baseUrl}/years/${modelType}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch years: ${response.status}`);
     }
+    const data: ApiYearsResponse = await response.json();
+    return data.years;
   }
 
   async getCircuits(year: number): Promise<string[]> {
-    if (this.useMockData) {
-      return this.getMockCircuits(year);
+    if (!this.connectionStatus.connected) {
+      throw new Error("API not connected");
     }
 
-    try {
-      const response = await fetch(`${this.baseUrl}/circuits/${year}`);
-      const data: ApiCircuitsResponse = await response.json();
-      return data.circuits;
-    } catch (error) {
-      console.error("API Error:", error);
-      return this.getMockCircuits(year);
+    const response = await fetch(`${this.baseUrl}/circuits/${year}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch circuits: ${response.status}`);
     }
+    const data: ApiCircuitsResponse = await response.json();
+    return data.circuits;
   }
 
   async predict(
@@ -102,116 +160,45 @@ class F1ApiService {
     year: number, 
     circuit: string
   ): Promise<PredictionResult[]> {
-    if (this.useMockData) {
-      return this.getMockPredictions(year, circuit);
+    if (!this.connectionStatus.connected) {
+      throw new Error("API not connected");
     }
 
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/predict/${modelType}?year=${year}&circuit=${encodeURIComponent(circuit)}`,
-        { method: 'POST' }
-      );
-      
-      const data: ApiPredictionResponse = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || "Prediction failed");
-      }
-
-      // Transform API response to match frontend format
-      return data.predictions.map((p) => ({
-        gridPosition: p.grid_position,
-        driver: p.driver,
-        team: p.team,
-        prediction: p.predicted_position,
-        actual: p.actual_position,
-        winningProb: p.win_probability > 0 ? `${p.win_probability.toFixed(1)}%` : "-",
-        teamColor: p.team_color || teamColors[p.team as keyof typeof teamColors] || "#888888"
-      }));
-    } catch (error) {
-      console.error("API Error:", error);
-      return this.getMockPredictions(year, circuit);
-    }
-  }
-
-  // Mock data fallbacks
-  private getMockYears(modelType: ModelType): number[] {
-    if (modelType === "telemetry") {
-      return [2025, 2024, 2023];
-    }
-    return [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
-  }
-
-  private getMockCircuits(year: number): string[] {
-    const circuits: Record<number, string[]> = {
-      2025: ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Japanese Grand Prix", "Chinese Grand Prix", "Miami Grand Prix"],
-      2024: ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Japanese Grand Prix", "Chinese Grand Prix", "Miami Grand Prix", "Monaco Grand Prix", "Spanish Grand Prix", "Canadian Grand Prix", "British Grand Prix"],
-      2023: ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Azerbaijan Grand Prix", "Miami Grand Prix", "Monaco Grand Prix", "Spanish Grand Prix", "Canadian Grand Prix", "Austrian Grand Prix", "British Grand Prix"],
-      2022: ["Bahrain Grand Prix", "Saudi Arabian Grand Prix", "Australian Grand Prix", "Italian Grand Prix", "Miami Grand Prix", "Spanish Grand Prix", "Monaco Grand Prix", "Azerbaijan Grand Prix", "Canadian Grand Prix", "British Grand Prix"],
-      2021: ["Bahrain Grand Prix", "Italian Grand Prix", "Portuguese Grand Prix", "Spanish Grand Prix", "Monaco Grand Prix", "Azerbaijan Grand Prix", "French Grand Prix", "Styrian Grand Prix", "Austrian Grand Prix", "British Grand Prix"],
-      2020: ["Austrian Grand Prix", "Styrian Grand Prix", "Hungarian Grand Prix", "British Grand Prix", "70th Anniversary Grand Prix", "Spanish Grand Prix", "Belgian Grand Prix", "Italian Grand Prix", "Tuscan Grand Prix", "Russian Grand Prix"],
-      2019: ["Australian Grand Prix", "Bahrain Grand Prix", "Chinese Grand Prix", "Azerbaijan Grand Prix", "Spanish Grand Prix", "Monaco Grand Prix", "Canadian Grand Prix", "French Grand Prix", "Austrian Grand Prix", "British Grand Prix"],
-      2018: ["Australian Grand Prix", "Bahrain Grand Prix", "Chinese Grand Prix", "Azerbaijan Grand Prix", "Spanish Grand Prix", "Monaco Grand Prix", "Canadian Grand Prix", "French Grand Prix", "Austrian Grand Prix", "British Grand Prix"]
-    };
-    return circuits[year] || circuits[2024];
-  }
-
-  private getMockPredictions(year: number, circuit: string): PredictionResult[] {
-    const drivers = [
-      { driver: "VER", team: "Red Bull Racing", base: 1 },
-      { driver: "NOR", team: "McLaren", base: 2 },
-      { driver: "LEC", team: "Ferrari", base: 3 },
-      { driver: "SAI", team: "Ferrari", base: 4 },
-      { driver: "PIA", team: "McLaren", base: 5 },
-      { driver: "HAM", team: "Mercedes", base: 6 },
-      { driver: "RUS", team: "Mercedes", base: 7 },
-      { driver: "PER", team: "Red Bull Racing", base: 8 },
-      { driver: "ALO", team: "Aston Martin", base: 9 },
-      { driver: "STR", team: "Aston Martin", base: 10 },
-      { driver: "GAS", team: "Alpine", base: 11 },
-      { driver: "OCO", team: "Alpine", base: 12 },
-      { driver: "TSU", team: "RB", base: 13 },
-      { driver: "RIC", team: "RB", base: 14 },
-      { driver: "ALB", team: "Williams", base: 15 },
-      { driver: "SAR", team: "Williams", base: 16 },
-      { driver: "MAG", team: "Haas", base: 17 },
-      { driver: "HUL", team: "Haas", base: 18 },
-      { driver: "BOT", team: "Kick Sauber", base: 19 },
-      { driver: "ZHO", team: "Kick Sauber", base: 20 },
-    ];
-
-    // Add variance based on circuit
-    const circuitHash = circuit.split("").reduce((a, b) => a + b.charCodeAt(0), 0);
+    const response = await fetch(
+      `${this.baseUrl}/predict/${modelType}?year=${year}&circuit=${encodeURIComponent(circuit)}`,
+      { method: 'POST' }
+    );
     
-    return drivers.map((d, index) => {
-      const variance = ((circuitHash + index) % 5) - 2;
-      const predictedPos = Math.max(1, Math.min(20, d.base + variance));
-      const actualVariance = ((circuitHash * 2 + index) % 7) - 3;
-      const actualPos = Math.max(1, Math.min(20, d.base + actualVariance));
-      
-      const maxProb = 35;
-      const winProb = Math.max(0.1, maxProb - (predictedPos - 1) * 1.8 + Math.random() * 2);
+    if (!response.ok) {
+      throw new Error(`Prediction failed: ${response.status}`);
+    }
 
-      return {
-        gridPosition: index + 1,
-        driver: d.driver,
-        team: d.team,
-        prediction: predictedPos,
-        actual: actualPos,
-        winningProb: predictedPos <= 3 ? `${winProb.toFixed(1)}%` : predictedPos <= 10 ? `${(winProb * 0.3).toFixed(1)}%` : "-",
-        teamColor: teamColors[d.team as keyof typeof teamColors] || "#888888"
-      };
-    }).sort((a, b) => a.prediction - b.prediction);
-  }
+    const data: ApiPredictionResponse = await response.json();
+    
+    if (!data.success) {
+      throw new Error(data.error || "Prediction failed");
+    }
 
-  isUsingMockData(): boolean {
-    return this.useMockData;
+    // Transform API response to match frontend format
+    return data.predictions.map((p) => ({
+      gridPosition: p.grid_position,
+      driver: p.driver,
+      team: p.team,
+      prediction: p.predicted_position,
+      actual: p.actual_position,
+      winningProb: p.win_probability > 0 ? `${p.win_probability.toFixed(1)}%` : "-",
+      teamColor: p.team_color || teamColors[p.team as keyof typeof teamColors] || "#888888"
+    }));
   }
 
   setApiUrl(url: string): void {
     this.baseUrl = url;
-    this.useMockData = false;
     console.log("API URL updated to:", url);
+    this.checkConnection();
+  }
+
+  getApiUrl(): string {
+    return this.baseUrl;
   }
 }
 
