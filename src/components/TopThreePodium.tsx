@@ -1,10 +1,95 @@
 import { motion } from "framer-motion";
-import { Trophy, Medal } from "lucide-react";
+import { Trophy, Medal, User } from "lucide-react";
 import { PredictionResult } from "@/data/f1MockData";
+import { useState } from "react";
 
 interface TopThreePodiumProps {
   predictions: PredictionResult[];
 }
+
+// F1 Driver image URLs (official F1 headshots)
+const DRIVER_IMAGES: Record<string, string> = {
+  // 2024-2025 Grid
+  "VER": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/M/MAXVER01_Max_Verstappen/maxver01.png",
+  "PER": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/S/SERPER01_Sergio_Perez/serper01.png",
+  "HAM": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/L/LEWHAM01_Lewis_Hamilton/lewham01.png",
+  "RUS": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/G/GEORUS01_George_Russell/georus01.png",
+  "LEC": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/C/CHALEC01_Charles_Leclerc/chalec01.png",
+  "SAI": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/C/CARSAI01_Carlos_Sainz/carsai01.png",
+  "NOR": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/L/LANNOR01_Lando_Norris/lannor01.png",
+  "PIA": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/O/OSCPIA01_Oscar_Piastri/oscpia01.png",
+  "ALO": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/F/FERALO01_Fernando_Alonso/feralo01.png",
+  "STR": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/L/LANSTR01_Lance_Stroll/lanstr01.png",
+  "GAS": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/P/PIEGAS01_Pierre_Gasly/piegas01.png",
+  "OCO": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/E/ESTOCO01_Esteban_Ocon/estoco01.png",
+  "ALB": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/A/ALEALB01_Alexander_Albon/alealb01.png",
+  "SAR": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/L/LOGSAR01_Logan_Sargeant/logsar01.png",
+  "TSU": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/Y/YUKTSU01_Yuki_Tsunoda/yuktsu01.png",
+  "RIC": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/D/DANRIC01_Daniel_Ricciardo/danric01.png",
+  "BOT": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/V/VALBOT01_Valtteri_Bottas/valbot01.png",
+  "ZHO": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/G/GUAZHO01_Guanyu_Zhou/guazho01.png",
+  "MAG": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/K/KEVMAG01_Kevin_Magnussen/kevmag01.png",
+  "HUL": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/N/NICHUL01_Nico_Hulkenberg/nichul01.png",
+  "LAW": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/L/LIALAW01_Liam_Lawson/lialaw01.png",
+  "COL": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/F/FRACOL01_Franco_Colapinto/fracol01.png",
+  "BEA": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/O/OLIBEA01_Oliver_Bearman/olibea01.png",
+  "DOO": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/J/JACDOO01_Jack_Doohan/jacdoo01.png",
+  "ANT": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/K/KISANT01_Kimi_Antonelli/kisant01.png",
+  "HAD": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/I/ISAHAD01_Isack_Hadjar/isahad01.png",
+  "BOR": "https://media.formula1.com/d_driver_fallback_image.png/content/dam/fom-website/drivers/G/GABDOR01_Gabriel_Bortoleto/gabdor01.png",
+};
+
+const getDriverImage = (driverCode: string): string => {
+  return DRIVER_IMAGES[driverCode] || "";
+};
+
+// Driver Image Component with fallback
+const DriverImage = ({ 
+  driver, 
+  positionColors, 
+  actualPosition 
+}: { 
+  driver: PredictionResult; 
+  positionColors: string[]; 
+  actualPosition: number;
+}) => {
+  const [imgError, setImgError] = useState(false);
+  const imageUrl = getDriverImage(driver.driver);
+
+  return (
+    <div
+      className="relative w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center font-racing text-xl md:text-2xl font-bold border-4 shadow-lg overflow-hidden"
+      style={{
+        backgroundColor: `${driver.teamColor}20`,
+        borderColor: driver.teamColor,
+      }}
+    >
+      {imageUrl && !imgError ? (
+        <img 
+          src={imageUrl}
+          alt={driver.driver}
+          className="w-full h-full object-cover object-top"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <span style={{ color: driver.teamColor }}>
+          {driver.driver.substring(0, 3)}
+        </span>
+      )}
+      
+      {/* Position Badge */}
+      <div
+        className="absolute -top-2 -right-2 w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md z-10"
+        style={{
+          backgroundColor: positionColors[actualPosition],
+          color: actualPosition === 1 ? "#000" : "#fff",
+        }}
+      >
+        {actualPosition + 1}
+      </div>
+    </div>
+  );
+};
 
 const TopThreePodium = ({ predictions }: TopThreePodiumProps) => {
   const top3 = predictions.slice(0, 3);
@@ -51,28 +136,12 @@ const TopThreePodium = ({ predictions }: TopThreePodiumProps) => {
                 transition={{ delay: delays[index] + 0.2 }}
                 className="relative mb-3"
               >
-                {/* Driver Avatar Circle */}
-                <div
-                  className="relative w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center font-racing text-xl md:text-2xl font-bold border-4 shadow-lg"
-                  style={{
-                    backgroundColor: `${originalDriver.teamColor}20`,
-                    borderColor: originalDriver.teamColor,
-                    color: originalDriver.teamColor,
-                  }}
-                >
-                  {originalDriver.driver.substring(0, 3)}
-                  
-                  {/* Position Badge */}
-                  <div
-                    className="absolute -top-2 -right-2 w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md"
-                    style={{
-                      backgroundColor: positionColors[actualPosition],
-                      color: actualPosition === 1 ? "#000" : "#fff",
-                    }}
-                  >
-                    {actualPosition + 1}
-                  </div>
-                </div>
+              {/* Driver Avatar Circle */}
+                <DriverImage 
+                  driver={originalDriver} 
+                  positionColors={positionColors} 
+                  actualPosition={actualPosition} 
+                />
 
                 {/* Trophy for 1st place */}
                 {actualPosition === 0 && (
