@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Zap, History, Layers, Info, AlertTriangle, WifiOff } from "lucide-react";
 import RaceSelector from "@/components/RaceSelector";
 import WinnerCards from "@/components/WinnerCards";
+import TopThreePodium from "@/components/TopThreePodium";
 import PredictionTable from "@/components/PredictionTable";
 import { ApiConnectionStatus } from "@/components/ApiConnectionStatus";
 import { PredictionResult } from "@/data/f1MockData";
@@ -291,6 +292,8 @@ uvicorn main:app --host 0.0.0.0 --port 8000`}
                   actualWinner={actualWinner.driver}
                   actualWinnerTeam={actualWinner.team}
                 />
+
+                <TopThreePodium predictions={predictions} />
 
                 <PredictionTable
                   data={predictions}
