@@ -1,4 +1,4 @@
-import { Zap, History, Layers, ChevronRight } from "lucide-react";
+import { Zap, History, Layers, ChevronRight, Flag } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -41,6 +41,15 @@ const predictionModels = [
     years: "2018-2025",
     description: "Pattern-based prediction",
     color: "hsl(var(--accent))",
+  },
+  {
+    title: "Race Visualization",
+    subtitle: "Live Simulation",
+    url: "/visualization",
+    icon: Flag,
+    years: "2023-2024",
+    description: "Watch races with telemetry",
+    color: "hsl(var(--f1-green))",
   },
 ];
 
