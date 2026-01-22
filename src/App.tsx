@@ -7,6 +7,7 @@ import { MainLayout } from "@/components/layouts/MainLayout";
 import HybridPredictor from "./pages/HybridPredictor";
 import TelemetryPredictor from "./pages/TelemetryPredictor";
 import HistoricalPredictor from "./pages/HistoricalPredictor";
+import RaceVisualization from "./pages/RaceVisualization";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
             <Route path="/" element={<HybridPredictor />} />
             <Route path="/telemetry" element={<TelemetryPredictor />} />
             <Route path="/historical" element={<HistoricalPredictor />} />
+            <Route path="/visualization" element={<RaceVisualization />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

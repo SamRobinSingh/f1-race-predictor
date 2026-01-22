@@ -62,6 +62,7 @@ export default {
           carbon: "hsl(var(--f1-carbon))",
           silver: "hsl(var(--f1-silver))",
           gold: "hsl(var(--f1-gold))",
+          green: "hsl(var(--f1-green))",
           "podium-1": "hsl(var(--f1-podium-1))",
           "podium-2": "hsl(var(--f1-podium-2))",
           "podium-3": "hsl(var(--f1-podium-3))",
